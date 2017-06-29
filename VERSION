@@ -1,3 +1,4 @@
-gpudb-udf-api-python_VERSION=6.0.0-20170228121625
-gpudb-udf-api-python_HASH=8bc50bfd23ad05611acf572ba73c3f2db3f9f165
-gpudb-udf-api-python_BRANCH=release/v6.0.0
+MAJOR = 6
+MINOR = 0
+REVISION = 1
+ABI_VERSION = 0

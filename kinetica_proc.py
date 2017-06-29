@@ -172,11 +172,11 @@ def _copy(data, index, value, size):
 
 
 def _decode_date(value):
-    return datetime.date(1900 + (value >> 21), (value >> 17) & 0b1111, (value >> 12) & 0b111111)
+    return datetime.date(1900 + (value >> 21), (value >> 17) & 0b1111, (value >> 12) & 0b11111)
 
 
 def _decode_time(value):
-    return datetime.time(value >> 26, (value >> 20) & 0b111111, (value >> 14) & 0b111111, ((value >> 4) & 0b1111111111) * 1000 + 1)
+    return datetime.time(value >> 26, (value >> 20) & 0b111111, (value >> 14) & 0b111111, ((value >> 4) & 0b1111111111) * 1000)
 
 
 def _encode_date(value):
@@ -320,7 +320,7 @@ class ProcData(object):
 
         def __getitem__(self, index):
             if isinstance(index, slice):
-                return [_iter(index)]
+                return [self._iter(index)]
             elif isinstance(index, (int, long)):
                 size = self._size
 
