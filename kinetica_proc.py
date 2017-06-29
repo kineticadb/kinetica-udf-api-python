@@ -320,7 +320,7 @@ class ProcData(object):
 
         def __getitem__(self, index):
             if isinstance(index, slice):
-                return [self._iter(index)]
+                return list(self._iter(index))
             elif isinstance(index, (int, long)):
                 size = self._size
 
