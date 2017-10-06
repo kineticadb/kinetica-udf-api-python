@@ -5,6 +5,77 @@ import itertools
 import mmap
 import os
 import struct
+import sys
+
+
+if sys.version_info < (3,):
+    def _decode_char(b):
+        return b[::-1].rstrip(b"\x00")
+
+    def _decode_string(b):
+        return b
+
+    def _encode_char(s, size):
+        return s.ljust(size, b"\x00")[size - 1::-1]
+
+    def _encode_string(s):
+        return s
+
+    def _iteritems(d):
+        return d.iteritems()
+
+    def next(i):
+        return i.next()
+
+    _integer_types = (int, long)
+    _izip = itertools.izip
+    _not_null = b"\x00"
+    _null = b"\x01"
+    _null_terminator = b"\x00"
+else:
+    def _decode_char(b):
+        return b[::-1].rstrip(b"\x00").decode(errors="replace")
+
+    def _decode_string(b):
+        return b.decode(errors="replace")
+
+    def _encode_char(s, size):
+        return s.encode(errors="replace").ljust(size, b"\x00")[size - 1::-1]
+
+    def _encode_string(s):
+        return s.encode(errors="replace")
+
+    def _iteritems(d):
+        return iter(d.items())
+
+    _integer_types = (int,)
+    _izip = zip
+    long = int
+    _not_null = 0
+    _null = 1
+    _null_terminator = 0
+    xrange = range
+
+
+_char1_struct = struct.Struct("c")
+_char2_struct = struct.Struct("2s")
+_char4_struct = struct.Struct("4s")
+_char8_struct = struct.Struct("8s")
+_char16_struct = struct.Struct("16s")
+_char32_struct = struct.Struct("32s")
+_char64_struct = struct.Struct("64s")
+_char128_struct = struct.Struct("128s")
+_char256_struct = struct.Struct("256s")
+_double_struct = struct.Struct("=d")
+_float_struct = struct.Struct("=f")
+_int8_struct = struct.Struct("=b")
+_int16_struct = struct.Struct("=h")
+_int32_struct = struct.Struct("=i")
+_int64_struct = struct.Struct("=q")
+_uint32_struct = struct.Struct("=I")
+_uint64_struct = struct.Struct("=Q")
+_uint64_struct_2 = struct.Struct("=2Q")
+
 
 class _MemoryMappedFile(object):
     def __init__(self):
@@ -83,11 +154,11 @@ class _MemoryMappedFile(object):
         pos = self.pos
         result = self.data[pos : pos + length]
         self.pos += length
-        return result
+        return _decode_string(result)
 
     def read_uint64(self):
         self._ensure(8)
-        result = struct.unpack_from("=Q", self.data, self.pos)[0]
+        result = _uint64_struct.unpack_from(self.data, self.pos)[0]
         self.pos += 8
         return result
 
@@ -105,18 +176,19 @@ class _MemoryMappedFile(object):
             data[pos : pos + length] = value
 
             if add_null:
-                data[pos + length] = "\x00"
+                data[pos + length] = _null_terminator
 
             self.pos += total_length
 
     def write_dict(self, value):
         self.write_uint64(len(value))
 
-        for k, v in value.iteritems():
+        for k, v in _iteritems(value):
             self.write_string(k)
             self.write_string(v)
 
     def write_string(self, value):
+        value = _encode_string(str(value))
         length = len(value)
         self.write_uint64(length)
         self._ensure(length)
@@ -126,7 +198,7 @@ class _MemoryMappedFile(object):
 
     def write_uint64(self, value):
         self._ensure(8)
-        struct.pack_into("=Q", self.data, self.pos, value)
+        _uint64_struct.pack_into(self.data, self.pos, value)
         self.pos += 8
 
     def truncate(self):
@@ -156,13 +228,16 @@ class _ReadOnlyMapping(collections.Mapping):
     def __len__(self):
         return len(self._internal)
 
+    def __repr__(self):
+        return repr(self._internal)
 
-class _Singleton(type):
+
+class _SingletonType(type):
     _instances = {}
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(_Singleton, cls).__call__(*args, **kwargs)
+            cls._instances[cls] = super(_SingletonType, cls).__call__(*args, **kwargs)
 
         return cls._instances[cls]
 
@@ -175,6 +250,11 @@ def _decode_date(value):
     return datetime.date(1900 + (value >> 21), (value >> 17) & 0b1111, (value >> 12) & 0b11111)
 
 
+def _decode_datetime(value):
+    return datetime.datetime(1900 + (value >> 53), (value >> 49) & 0b1111, (value >> 44) & 0b11111,
+                             (value >> 39) & 0b11111, (value >> 33) & 0b111111, (value >> 27) & 0b111111, ((value >> 17) & 0b1111111111) * 1000)
+
+
 def _decode_time(value):
     return datetime.time(value >> 26, (value >> 20) & 0b111111, (value >> 14) & 0b111111, ((value >> 4) & 0b1111111111) * 1000)
 
@@ -183,13 +263,16 @@ def _encode_date(value):
     return ((value.year - 1900) << 21) | (value.month << 17) | (value.day << 12)
 
 
+def _encode_datetime(value):
+    return ((value.year - 1900) << 53) | (value.month << 49) | (value.day << 44) \
+           | (value.hour << 39) | (value.minute << 33) | (value.second << 27) | ((value.microsecond // 1000) << 17)
+
+
 def _encode_time(value):
-    return (value.hour << 26) | (value.minute << 20) | (value.second << 14) | ((value.microsecond / 1000) << 4)
+    return (value.hour << 26) | (value.minute << 20) | (value.second << 14) | ((value.microsecond // 1000) << 4)
 
 
-class ProcData(object):
-    __metaclass__ = _Singleton
-
+class ProcData(_SingletonType("_Singleton", (object,), {})):
     class ColumnType(object):
         BYTES     = 0x0000002
         CHAR1     = 0x0080000
@@ -202,6 +285,7 @@ class ProcData(object):
         CHAR128   = 0x0800000
         CHAR256   = 0x1000000
         DATE      = 0x2000000
+        DATETIME  = 0x0000200
         DECIMAL   = 0x8000000
         DOUBLE    = 0x0000010
         FLOAT     = 0x0000020
@@ -215,7 +299,7 @@ class ProcData(object):
         TIMESTAMP = 0x0010000
 
 
-    class Column(object):
+    class Column(collections.Sequence):
         def __init__(self, file, writable):
             self._name = file.read_string()
             self._type = file.read_uint64()
@@ -232,6 +316,7 @@ class ProcData(object):
                 ProcData.ColumnType.CHAR128:   128,
                 ProcData.ColumnType.CHAR256:   256,
                 ProcData.ColumnType.DATE:        4,
+                ProcData.ColumnType.DATETIME:    8,
                 ProcData.ColumnType.DECIMAL:     8,
                 ProcData.ColumnType.DOUBLE:      8,
                 ProcData.ColumnType.FLOAT:       4,
@@ -253,7 +338,7 @@ class ProcData(object):
 
             if data_path:
                 self._data.map(data_path, writable)
-                self._size = self._data.size / self._type_size
+                self._size = self._data.size // self._type_size
             else:
                 self._size = 0
 
@@ -273,33 +358,63 @@ class ProcData(object):
                 self._var_data.map(var_data_path, writable)
 
             if self._type == ProcData.ColumnType.BYTES:
-                self._var_add_null = False
+                self._var_string = False
+                self._var_type = True
+                self._decode_var_value = lambda var_data, start, end: b"" if start == end else struct.unpack_from(str(end - start) + "s", var_data, start)[0]
             elif self.type == ProcData.ColumnType.STRING:
-                self._var_add_null = True
+                self._var_string = True
+                self._var_type = True
+                self._decode_var_value = lambda var_data, start, end: "" if start == end else _decode_string(struct.unpack_from(str(end - start - 1) + "s", var_data, start)[0])
             else:
-                self._var_add_null = None
+                self._var_string = None
+                self._var_type = False
 
                 self._decode_value = {
-                    ProcData.ColumnType.CHAR1: lambda data, index: data[index : index + 1][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR2: lambda data, index: data[index * 2 : (index + 1) * 2][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR4: lambda data, index: data[index * 4 : (index + 1) * 4][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR8: lambda data, index: data[index * 8 : (index + 1) * 8][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR16: lambda data, index: data[index * 16 : (index + 1) * 16][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR32: lambda data, index: data[index * 32 : (index + 1) * 32][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR64: lambda data, index: data[index * 64 : (index + 1) * 64][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR128: lambda data, index: data[index * 128 : (index + 1) * 128][::-1].rstrip("\0"),
-                    ProcData.ColumnType.CHAR256: lambda data, index: data[index * 256 : (index + 1) * 256][::-1].rstrip("\0"),
-                    ProcData.ColumnType.DATE: lambda data, index: _decode_date(struct.unpack_from("=i", data, index * 4)[0]),
-                    ProcData.ColumnType.DECIMAL: lambda data, index: decimal.Decimal(struct.unpack_from("=q", data, index * 8)[0]).scaleb(-4),
-                    ProcData.ColumnType.DOUBLE: lambda data, index: struct.unpack_from("=d", data, index * 8)[0],
-                    ProcData.ColumnType.FLOAT: lambda data, index: struct.unpack_from("=f", data, index * 4)[0],
-                    ProcData.ColumnType.INT: lambda data, index: struct.unpack_from("=i", data, index * 4)[0],
-                    ProcData.ColumnType.INT8: lambda data, index: struct.unpack_from("=b", data, index)[0],
-                    ProcData.ColumnType.INT16: lambda data, index: struct.unpack_from("=h", data, index * 2)[0],
-                    ProcData.ColumnType.IPV4: lambda data, index: struct.unpack_from("=i", data, index * 4)[0],
-                    ProcData.ColumnType.LONG: lambda data, index: struct.unpack_from("=q", data, index * 8)[0],
-                    ProcData.ColumnType.TIME: lambda data, index: _decode_time(struct.unpack_from("=I", data, index * 4)[0]),
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index: struct.unpack_from("=q", data, index * 8)[0]
+                    ProcData.ColumnType.CHAR1: lambda data, index: _decode_char(_char1_struct.unpack_from(data, index)[0]),
+                    ProcData.ColumnType.CHAR2: lambda data, index: _decode_char(_char2_struct.unpack_from(data, index * 2)[0]),
+                    ProcData.ColumnType.CHAR4: lambda data, index: _decode_char(_char4_struct.unpack_from(data, index * 4)[0]),
+                    ProcData.ColumnType.CHAR8: lambda data, index: _decode_char(_char8_struct.unpack_from(data, index * 8)[0]),
+                    ProcData.ColumnType.CHAR16: lambda data, index: _decode_char(_char16_struct.unpack_from(data, index * 16)[0]),
+                    ProcData.ColumnType.CHAR32: lambda data, index: _decode_char(_char32_struct.unpack_from(data, index * 32)[0]),
+                    ProcData.ColumnType.CHAR64: lambda data, index: _decode_char(_char64_struct.unpack_from(data, index * 64)[0]),
+                    ProcData.ColumnType.CHAR128: lambda data, index: _decode_char(_char128_struct.unpack_from(data, index * 128)[0]),
+                    ProcData.ColumnType.CHAR256: lambda data, index: _decode_char(_char256_struct.unpack_from(data, index * 256)[0]),
+                    ProcData.ColumnType.DATE: lambda data, index: _decode_date(_int32_struct.unpack_from(data, index * 4)[0]),
+                    ProcData.ColumnType.DATETIME: lambda data, index: _decode_datetime(_int64_struct.unpack_from(data, index * 8)[0]),
+                    ProcData.ColumnType.DECIMAL: lambda data, index: decimal.Decimal(_int64_struct.unpack_from(data, index * 8)[0]).scaleb(-4),
+                    ProcData.ColumnType.DOUBLE: lambda data, index: _double_struct.unpack_from(data, index * 8)[0],
+                    ProcData.ColumnType.FLOAT: lambda data, index: _float_struct.unpack_from(data, index * 4)[0],
+                    ProcData.ColumnType.INT: lambda data, index: _int32_struct.unpack_from(data, index * 4)[0],
+                    ProcData.ColumnType.INT8: lambda data, index: _int8_struct.unpack_from(data, index)[0],
+                    ProcData.ColumnType.INT16: lambda data, index: _int16_struct.unpack_from(data, index * 2)[0],
+                    ProcData.ColumnType.IPV4: lambda data, index: _int32_struct.unpack_from(data, index * 4)[0],
+                    ProcData.ColumnType.LONG: lambda data, index: _int64_struct.unpack_from(data, index * 8)[0],
+                    ProcData.ColumnType.TIME: lambda data, index: _decode_time(_uint32_struct.unpack_from(data, index * 4)[0]),
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index: _int64_struct.unpack_from(data, index * 8)[0]
+                }[self._type]
+
+                self._decode_multiple = {
+                    ProcData.ColumnType.CHAR1: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from(str(count) + "c", data, index)],
+                    ProcData.ColumnType.CHAR2: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("2s" * count, data, index * 2)],
+                    ProcData.ColumnType.CHAR4: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("4s" * count, data, index * 4)],
+                    ProcData.ColumnType.CHAR8: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("8s" * count, data, index * 8)],
+                    ProcData.ColumnType.CHAR16: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("16s" * count, data, index * 16)],
+                    ProcData.ColumnType.CHAR32: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("32s" * count, data, index * 32)],
+                    ProcData.ColumnType.CHAR64: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("64s" * count, data, index * 64)],
+                    ProcData.ColumnType.CHAR128: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("128s" * count, data, index * 128)],
+                    ProcData.ColumnType.CHAR256: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("256s" * count, data, index * 256)],
+                    ProcData.ColumnType.DATE: lambda data, index, count: [_decode_date(value) for value in struct.unpack_from("=" + str(count) + "i", data, index * 4)],
+                    ProcData.ColumnType.DATETIME: lambda data, index, count: [_decode_datetime(value) for value in struct.unpack_from("=" + str(count) + "q", data, index * 8)],
+                    ProcData.ColumnType.DECIMAL: lambda data, index, count: [decimal.Decimal(value).scaleb(-4) for value in struct.unpack_from("=" + str(count) + "q", data, index * 8)],
+                    ProcData.ColumnType.DOUBLE: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "d", data, index * 8)),
+                    ProcData.ColumnType.FLOAT: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "f", data, index * 4)),
+                    ProcData.ColumnType.INT: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "i", data, index * 4)),
+                    ProcData.ColumnType.INT8: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "b", data, index)),
+                    ProcData.ColumnType.INT16: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "h", data, index * 2)),
+                    ProcData.ColumnType.IPV4: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "i", data, index * 4)),
+                    ProcData.ColumnType.LONG: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "q", data, index * 8)),
+                    ProcData.ColumnType.TIME: lambda data, index, count: [_decode_time(value) for value in struct.unpack_from("=" + str(count) + "I", data, index * 4)],
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "q", data, index * 8))
                 }[self._type]
 
         @property
@@ -319,9 +434,7 @@ class ProcData(object):
             return self._size
 
         def __getitem__(self, index):
-            if isinstance(index, slice):
-                return list(self._iter(index))
-            elif isinstance(index, (int, long)):
+            if isinstance(index, _integer_types):
                 size = self._size
 
                 if index < 0:
@@ -330,75 +443,65 @@ class ProcData(object):
                 if index < 0 or index >= size:
                     raise IndexError("Index out of range: " + str(index))
 
-                var_add_null = self._var_add_null
-
-                if var_add_null is None:
+                if not self._var_type:
                     if self._is_nullable:
-                        return None if self._nulls.data[index] == "\x01" else self._decode_value(self._data.data, index)
+                        return None if self._nulls.data[index] == _null else self._decode_value(self._data.data, index)
                     else:
                         return self._decode_value(self._data.data, index)
                 else:
-                    if self._is_nullable and nulls[index] == "\x01":
+                    if self._is_nullable and self._nulls.data[index] == _null:
                         return None
                     else:
-                        data = self._data.data
                         var_data = self._var_data
-                        start = struct.unpack_from("=Q", data, index * 8)[0]
 
                         if index < size - 1:
-                            end = struct.unpack_from("=Q", data, (index + 1) * 8)[0]
+                            positions = _uint64_struct_2.unpack_from(self._data.data, index * 8)
                         else:
-                            end = var_data.size
+                            positions = (_uint64_struct.unpack_from(self._data.data, index * 8)[0], var_data.size)
 
-                        if start == end:
-                            return ""
+                        return self._decode_var_value(var_data.data, positions[0], positions[1])
+            elif isinstance(index, slice):
+                if index.step is None or index.step == 1:
+                    size = self._size
+                    indices = index.indices(size)
+                    start = indices[0]
+                    stop = indices[1]
+
+                    if start == stop:
+                        return []
+
+                    if not self._var_type:
+                        result = self._decode_multiple(self._data.data, start, stop - start)
+                    else:
+                        var_data = self._var_data
+                        decode_var_value = self._decode_var_value
+
+                        if (stop < size):
+                            positions = struct.unpack_from("=" + str(stop - start + 1) + "Q", self._data.data, start * 8)
                         else:
-                            return var_data.data[start : end - (1 if var_add_null else 0)]
+                            positions = list(struct.unpack_from("=" + str(stop - start) + "Q", self._data.data, start * 8))
+                            positions.append(var_data.size)
+
+                        result = [decode_var_value(var_data.data, positions[i], positions[i + 1]) for i in xrange(0, len(positions) - 1)]
+
+                    if self._is_nullable:
+                        for i, null in enumerate(struct.unpack_from(str(stop - start) + "c", self._nulls.data, start)):
+                            if null == _null:
+                                result[i] = None
+
+                    return result
+                else:
+                    return [self[i] for i in xrange(*index.indices(self._size))]
             else:
                 raise TypeError("Invalid index specified: " + str(index))
 
         def __iter__(self):
-            return self._iter()
+            for i in xrange(0, self._size, 1024):
+                for value in self[i:i + 1024]:
+                    yield value
 
         def __len__(self):
             return self._size
-
-        def _iter(self, slice=slice(None)):
-            data = self._data.data
-            size = self._size
-            var_add_null = self._var_add_null
-
-            if var_add_null is None:
-                decode_value = self._decode_value
-
-                if self._is_nullable:
-                    nulls = self._nulls.data
-                    return (None if nulls[i] == "\x01" else decode_value(data, i) for i in xrange(*slice.indices(size)))
-                else:
-                    return (decode_value(data, i) for i in xrange(*slice.indices(size)))
-            else:
-                var_data = self._var_data
-                var_data_data = var_data.data
-                var_data_size = var_data.size
-
-                def get_value(index):
-                    start = struct.unpack_from("=Q", data, index * 8)[0]
-
-                    if index < size - 1:
-                        end = struct.unpack_from("=Q", data, (index + 1) * 8)[0]
-                    else:
-                        end = var_data_size
-
-                    if start == end:
-                        return ""
-                    else:
-                        return var_data_data[start : end - (1 if var_add_null else 0)]
-
-                if self._is_nullable:
-                    nulls = self._nulls.data
-                    return (None if nulls[i] == "\x01" else get_value(i) for i in xrange(*slice.indices(size)))
-                else:
-                    return (get_value(i) for i in xrange(*slice.indices(size)))
 
 
     class InputColumn(Column):
@@ -411,32 +514,33 @@ class ProcData(object):
             super(ProcData.OutputColumn, self).__init__(file, True)
             self._pos = 0
 
-            if self._var_add_null is None:
+            if not self._var_type:
                 self._encode_value = {
-                    ProcData.ColumnType.CHAR1: lambda data, index, value: _copy(data, index, value.ljust(1, "\x00")[0::-1], 1),
-                    ProcData.ColumnType.CHAR2: lambda data, index, value: _copy(data, index, value.ljust(2, "\x00")[1::-1], 2),
-                    ProcData.ColumnType.CHAR4: lambda data, index, value: _copy(data, index, value.ljust(4, "\x00")[3::-1], 4),
-                    ProcData.ColumnType.CHAR8: lambda data, index, value: _copy(data, index, value.ljust(8, "\x00")[7::-1], 8),
-                    ProcData.ColumnType.CHAR16: lambda data, index, value: _copy(data, index, value.ljust(16, "\x00")[15::-1], 16),
-                    ProcData.ColumnType.CHAR32: lambda data, index, value: _copy(data, index, value.ljust(32, "\x00")[31::-1], 32),
-                    ProcData.ColumnType.CHAR64: lambda data, index, value: _copy(data, index, value.ljust(64, "\x00")[63::-1], 64),
-                    ProcData.ColumnType.CHAR128: lambda data, index, value: _copy(data, index, value.ljust(128, "\x00")[127::-1], 128),
-                    ProcData.ColumnType.CHAR256: lambda data, index, value: _copy(data, index, value.ljust(256, "\x00")[255::-1], 256),
-                    ProcData.ColumnType.DATE: lambda data, index, value: struct.pack_into("=i", data, index * 4, _encode_date(value)),
-                    ProcData.ColumnType.DECIMAL: lambda data, index, value: struct.pack_into("=q", data, index * 8, value * 10000),
-                    ProcData.ColumnType.DOUBLE: lambda data, index, value: struct.pack_into("=d", data, index * 8, value),
-                    ProcData.ColumnType.FLOAT: lambda data, index, value: struct.pack_into("=f", data, index * 4, value),
-                    ProcData.ColumnType.INT: lambda data, index, value: struct.pack_into("=i", data, index * 4, value),
-                    ProcData.ColumnType.INT8: lambda data, index, value: struct.pack_into("=b", data, index, value),
-                    ProcData.ColumnType.INT16: lambda data, index, value: struct.pack_into("=h", data, index * 2, value),
-                    ProcData.ColumnType.IPV4: lambda data, index, value: struct.pack_into("=i", data, index * 4, value),
-                    ProcData.ColumnType.LONG: lambda data, index, value: struct.pack_into("=q", data, index * 8, value),
-                    ProcData.ColumnType.TIME: lambda data, index, value: struct.pack_into("=I", data, index * 4, _encode_time(value)),
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: struct.pack_into("=q", data, index * 8, value)
+                    ProcData.ColumnType.CHAR1: lambda data, index, value: _char1_struct.pack_into(data, index, _encode_char(value, 1)),
+                    ProcData.ColumnType.CHAR2: lambda data, index, value: _char2_struct.pack_into(data, index * 2, _encode_char(value, 2)),
+                    ProcData.ColumnType.CHAR4: lambda data, index, value: _char4_struct.pack_into(data, index * 4, _encode_char(value, 4)),
+                    ProcData.ColumnType.CHAR8: lambda data, index, value: _char8_struct.pack_into(data, index * 8, _encode_char(value, 8)),
+                    ProcData.ColumnType.CHAR16: lambda data, index, value: _char16_struct.pack_into(data, index * 16, _encode_char(value, 16)),
+                    ProcData.ColumnType.CHAR32: lambda data, index, value: _char32_struct.pack_into(data, index * 32, _encode_char(value, 32)),
+                    ProcData.ColumnType.CHAR64: lambda data, index, value: _char64_struct.pack_into(data, index * 64, _encode_char(value, 64)),
+                    ProcData.ColumnType.CHAR128: lambda data, index, value: _char128_struct.pack_into(data, index * 128, _encode_char(value, 128)),
+                    ProcData.ColumnType.CHAR256: lambda data, index, value: _char256_struct.pack_into(data, index * 256, _encode_char(value, 256)),
+                    ProcData.ColumnType.DATE: lambda data, index, value: _int32_struct.pack_into(data, index * 4, _encode_date(value)),
+                    ProcData.ColumnType.DATETIME: lambda data, index, value: _int64_struct.pack_into(data, index * 8, _encode_datetime(value)),
+                    ProcData.ColumnType.DECIMAL: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value * 10000)),
+                    ProcData.ColumnType.DOUBLE: lambda data, index, value: _double_struct.pack_into(data, index * 8, value),
+                    ProcData.ColumnType.FLOAT: lambda data, index, value: _float_struct.pack_into(data, index * 4, value),
+                    ProcData.ColumnType.INT: lambda data, index, value: _int32_struct.pack_into(data, index * 4, value),
+                    ProcData.ColumnType.INT8: lambda data, index, value: _int8_struct.pack_into(data, index, value),
+                    ProcData.ColumnType.INT16: lambda data, index, value: _int16_struct.pack_into(data, index * 2, value),
+                    ProcData.ColumnType.IPV4: lambda data, index, value: _int32_struct.pack_into(data, index * 4, value),
+                    ProcData.ColumnType.LONG: lambda data, index, value: _int64_struct.pack_into(data, index * 8, value),
+                    ProcData.ColumnType.TIME: lambda data, index, value: _uint32_struct.pack_into(data, index * 4, _encode_time(value)),
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: _int64_struct.pack_into(data, index * 8, value)
                 }[self._type]
 
         def __setitem__(self, index, value):
-            if self._var_add_null is not None:
+            if self._var_type:
                 raise RuntimeError("Cannot set values in variable-length column")
 
             if isinstance(index, slice):
@@ -448,28 +552,28 @@ class ProcData(object):
                 if self._is_nullable:
                     nulls = self._nulls.data
 
-                    for i, v in itertools.izip(ii, vi):
+                    for i, v in _izip(ii, vi):
                         if v is None:
-                            nulls[i] = "\x01"
+                            nulls[i] = _null
                         else:
-                            nulls[i] = "\x00"
+                            nulls[i] = _not_null
                             encode_value(data, i, v)
                 else:
-                    for i, v in itertools.izip(ii, vi):
+                    for i, v in _izip(ii, vi):
                         encode_value(data, i, v)
 
                 try:
-                    ii.next()
+                    next(ii)
                     raise IndexError("Incorrect slice assignment size")
                 except StopIteration:
                     pass
 
                 try:
-                    vi.next()
+                    next(vi)
                     raise IndexError("Incorrect slice assignment size")
                 except StopIteration:
                     pass
-            elif isinstance(index, (int, long)):
+            elif isinstance(index, _integer_types):
                 size = self._size
 
                 if index < 0:
@@ -480,9 +584,9 @@ class ProcData(object):
 
                 if self._is_nullable:
                     if value is None:
-                        self._nulls.data[index] = "\x01"
+                        self._nulls.data[index] = _null
                     else:
-                        self._nulls.data[index] = "\x00"
+                        self._nulls.data[index] = _not_null
                         self._encode_value(self._data.data, index, value)
                 else:
                     self._encode_value(self._data.data, index, value)
@@ -495,29 +599,29 @@ class ProcData(object):
             if index >= self._size:
                 raise IndexError("Insufficient table size")
 
-            var_add_null = self._var_add_null
+            var_string = self._var_string
 
-            if var_add_null is None:
+            if var_string is None:
                 if self._is_nullable:
                     if value is None:
-                        self._nulls.data[index] = "\x01"
+                        self._nulls.data[index] = _null
                     else:
-                        self._nulls.data[index] = "\x00"
+                        self._nulls.data[index] = _not_null
                         self._encode_value(self._data.data, index, value)
                 else:
                     self._encode_value(self._data.data, index, value)
             else:
                 var_data = self._var_data
-                struct.pack_into("=Q", self._data.data, index * 8, var_data.pos)
+                _uint64_struct.pack_into(self._data.data, index * 8, var_data.pos)
 
                 if self._is_nullable:
                     if value is None:
-                        self._nulls.data[index] = "\x01"
+                        self._nulls.data[index] = _null
                     else:
-                        self._nulls.data[index] = "\x00"
-                        var_data.write(value, var_add_null)
+                        self._nulls.data[index] = _not_null
+                        var_data.write(_encode_string(value) if var_string else value, var_string)
                 else:
-                    var_data.write(value, var_add_null)
+                    var_data.write(_encode_string(value) if var_string else value, var_string)
 
             self._pos += 1
             return index
@@ -526,10 +630,10 @@ class ProcData(object):
             index = self._pos
             data = self._data.data
             size = self._size
-            var_add_null = self._var_add_null
+            var_string = self._var_string
 
             try:
-                if var_add_null is None:
+                if var_string is None:
                     encode_value = self._encode_value
 
                     if self._is_nullable:
@@ -539,9 +643,9 @@ class ProcData(object):
                             if index >= size:
                                 raise IndexError("Insufficient table size")
                             elif value is None:
-                                nulls[index] = "\x01"
+                                nulls[index] = _null
                             else:
-                                nulls[index] = "\x00"
+                                nulls[index] = _not_null
                                 encode_value(data, index, value)
 
                             index += 1
@@ -563,13 +667,13 @@ class ProcData(object):
                             if index >= size:
                                 raise IndexError("Insufficient table size")
                             else:
-                                struct.pack_into("=Q", data, index * 8, var_data.pos)
+                                _uint64_struct.pack_into(data, index * 8, var_data.pos)
 
                                 if value is None:
-                                    nulls[index] = "\x01"
+                                    nulls[index] = _null
                                 else:
-                                    nulls[index] = "\x00"
-                                    var_data.write(value, var_add_null)
+                                    nulls[index] = _not_null
+                                    var_data.write(_encode_string(value) if var_string else value, var_string)
 
                             index += 1
                     else:
@@ -577,8 +681,8 @@ class ProcData(object):
                             if index >= size:
                                 raise IndexError("Insufficient table size")
                             else:
-                                struct.pack_into("=Q", data, index * 8, var_data.pos)
-                                var_data.write(value, var_add_null)
+                                _uint64_struct.pack_into(data, index * 8, var_data.pos)
+                                var_data.write(_encode_string(value) if var_string else value, var_string)
 
                             index += 1
             finally:
@@ -587,7 +691,7 @@ class ProcData(object):
             return index - 1
 
         def _complete(self):
-            if self._var_add_null is not None:
+            if self._var_string is not None:
                 self._var_data.truncate()
 
         def _reserve(self, size):
