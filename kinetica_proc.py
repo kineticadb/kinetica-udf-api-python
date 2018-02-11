@@ -1,6 +1,7 @@
 import collections
 import datetime
 import decimal
+import fcntl
 import itertools
 import mmap
 import os
@@ -134,6 +135,13 @@ class _MemoryMappedFile(object):
         except Exception:
             pass
 
+    def seek(self, pos):
+        self._ensure(pos - self.pos)
+        self.pos = pos
+
+    def eof(self):
+        return self.pos >= self.size
+
     def read_dict(self, result=None):
         length = self.read_uint64()
 
@@ -203,6 +211,18 @@ class _MemoryMappedFile(object):
 
     def truncate(self):
         self.remap(self.pos)
+
+    def lock(self, exclusive):
+        if self.file is None:
+            raise RuntimeError("File not mapped")
+
+        fcntl.flock(self.file, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+
+    def unlock(self):
+        if self.file is None:
+            return
+
+        fcntl.flock(self.file, fcntl.LOCK_UN)
 
     def _ensure(self, length):
         pos = self.pos
@@ -800,7 +820,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
 
         version = control_file.read_uint64()
 
-        if version != 1:
+        if version not in (1, 2):
             raise ValueError("Unrecognized control file version: " + str(version))
 
         self._request_info = control_file.read_dict()
@@ -811,6 +831,14 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         self._input_data = ProcData.InputDataSet(control_file)
         self._output_data = ProcData.OutputDataSet(control_file)
         self._output_control_file_name = control_file.read_string()
+
+        if version == 2:
+            self._status_file = _MemoryMappedFile()
+            self._status_file.map(control_file.read_string(), True)
+        else:
+            self._status_file = None
+
+        self._status = ""
         self._results = {}
         self._bin_results = {}
 
@@ -833,6 +861,23 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
     @property
     def output_data(self):
         return self._output_data
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, value):
+        self._status = value
+
+        if self._status_file is not None:
+            self._status_file.lock(True)
+
+            try:
+                self._status_file.seek(0)
+                self._status_file.write_string(value)
+            finally:
+                self._status_file.unlock()
 
     @property
     def results(self):

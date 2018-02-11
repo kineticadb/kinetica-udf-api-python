@@ -5,11 +5,11 @@ The source code for this project can be found at
 https://github.com/kineticadb/kinetica-udf-api-python
 
 ## UDF Reference Documentation ##
-For information about UDFs in Kinetica, please see the Concepts/User Defined 
-Functions section of the Kinetica documentation 
-(http://www.kinetica.com/docs/concepts/index.html#user-defined-functions).
+For information about UDFs in Kinetica, please see the User-Defined Functions
+section of the Kinetica documentation 
+(https://www.kinetica.com/docs/concepts/udf.html).
 
-## Installing the Kinetic UDF APIs for Python ##
+## Installing the Kinetica UDF APIs for Python ##
 Note that the UDF API must be installed on *all* of the machines in the Kinetica 
 cluster if running UDFs in distributed mode, as each rank will run procs locally.
 
@@ -23,19 +23,27 @@ module is available on PyPI.  The following example demonstrates installing the
 "simplejson" module:
 
   ```
-  /opt/gpudb/core/bin/gpudb_pip.sh install simplejson
+  /opt/gpudb/udf/api/python/gpudb-pip.sh install simplejson
   ```
 
 ### Installing Python Modules Using easy_install ###
 
 If you cannot use pip (because the package is not available on PyPI, or there is
- no internet connectivity, then you can use easy_install instead.  In this 
- instance, you can use the 
+no internet connectivity, then you can use easy_install instead.  In this
+instance, you can place the whell or tgz file into the /opt/gpudb/thirdparty
+folder on the head node and use the
+/opt/gpudb/core/bin/gpudb_hosts_rsync_to.sh command to copy just the one file
+to all hosts.  Then use the /opt/gpudb/core/bin/gpudb_hosts_ssh_execute.sh
+command combined with the /opt/gpudb/core/bin/gpudb_env.sh command to install
+the module.
 
-If you require an alternate version of python, you can replace the path as 
-needed, but you may also need to adjust the /opt/gpudb/core/bin/gpudb_execute_proc.sh 
-script on all the machines in the Kinetica cluster to ensure that the required 
-version of python is executed at runtime.
+  ```
+  # Assumes that you have already downloaded the python module to the head
+  # node of the cluster, and it is in the current folder and named
+  # 'python-module.tgz'
+  /opt/gpudb/core/bin/gpudb_hosts_rsync_to.sh python-module.tgz /tmp/python-module.tgz
+  /opt/gpudb/core/bin/gpudb_hosts_ssh_execute.sh /opt/gpudb/core/bin/gpudb_env.sh easy_install /tmp/python-module.tgz
+  ```
 
 ## Using the UDF API without installing ##
 If you do not wish to install the API, or do not have permission, you can add 
