@@ -506,7 +506,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
 
                     if self._is_nullable:
                         for i, null in enumerate(struct.unpack_from(str(stop - start) + "c", self._nulls.data, start)):
-                            if null == _null:
+                            if null == b"\x01":
                                 result[i] = None
 
                     return result
