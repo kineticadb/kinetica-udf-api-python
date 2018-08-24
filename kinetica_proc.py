@@ -7,7 +7,13 @@ import mmap
 import os
 import struct
 import sys
-
+import pandas as pd
+try:
+    import h2o
+    from pygdf.dataframe import DataFrame
+except (OSError, ImportError):
+    print('Warning: Your environment is not properly setup for using pygdf and/or h2o.'
+          ' Please refer to /examples/README to fix this.\n')
 
 if sys.version_info < (3,):
     def _decode_char(b):
@@ -886,6 +892,116 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
     @property
     def bin_results(self):
         return self._bin_results
+
+    def to_df(self):
+        """Access proc data as Pandas data frame. If the UDF input data is a single table then a Pandas Data Frame
+            is returned. If it is multiple tables then a Pandas Series where the elements are of type Data Frame
+            is returned.
+
+            Returns:
+                 Pandas Data Frame if single table, Pandas Series of Data Frames if multiple tables.
+        """
+        table_data = pd.Series()
+        for in_table in self.input_data:
+            current_table_data = {}
+            for in_column in in_table:
+                current_table_data[in_column.name] = in_column
+            table_data[in_table.name] = pd.DataFrame(data=current_table_data)
+        if len(table_data) == 1:
+            return table_data[0]
+        return table_data
+
+    def from_df(self, df, output_table):
+        """Assign data in a Pandas Data Frame to an output table in Kinetica.
+            To use this, make sure df has the same schema as output table: number of columns and column names
+            have to match.
+
+            Args:
+                df: The Pandas Data Frame which will be written into output_table.
+                output_table: The output table in Kinetica (the actual table object, not just the name) that will
+                receive the content of df.
+        """
+        for col in df.columns:
+            # pandas object data, string
+            if df.dtypes[col] == "O":
+                output_table[col][:] = df[col].astype(str)
+            # pandas int, float
+            else:
+                output_table[col][:] = df[col]
+
+    def to_gdf(self):
+        """Access proc data as pygdf data frame (GPU - data frame). If the UDF input data is a single table then
+            a pygdf data frame is returned. If it is multiple tables then a Pandas Series where the elements are
+            of type pygdf data frame is returned.
+
+            Returns:
+                 Pygdf Data Frame if single table, Pandas Series of Pygdf Data Frames if multiple tables.
+                 None if Pygdf is not installed.
+        """
+        try:
+            table_data = self.to_df()
+            if isinstance(table_data, pd.DataFrame):
+                return DataFrame.from_pandas(table_data)
+            gpu_df_series = pd.Series()
+            for table_name in table_data.index:
+                current_gpu_df = DataFrame.from_pandas(table_data[table_name])
+                gpu_df_series[table_name] = current_gpu_df
+            return gpu_df_series
+        except NameError:
+            print('Pygdf not installed.')
+            return None
+
+    def from_gdf(self, gdf, output_table):
+        """Assign data in a Pygdf Data Frame to an output table in Kinetica.
+            To use this, make sure the gdf has the same schema as output table: number of columns and column names
+            have to match.
+
+            Args:
+                gdf: The Pygdf Data Frame which will be written into output_table.
+                output_table: The output table in Kinetica (the actual table object, not just the name) that will
+                receive the content of gdf.
+        """
+        for col in gdf.columns:
+            # pandas object data, string
+            if gdf.dtypes[col] == "O":
+                output_table[col][:] = gdf[col].astype(str)
+            # pandas int, float
+            else:
+                output_table[col][:] = gdf[col]
+
+    def to_h2odf(self):
+        """Access proc data as H2O data frame. If the UDF input data is a single table then a H2O data frame is
+            returned. If it is multiple tables then a Pandas Series where the elements are of type H2O data frame
+            is returned.
+
+            Returns:
+                 H2O Data Frame if single table, Pandas Series of H2O Data Frames if multiple tables.
+                 None if H2o is not installed.
+        """
+        try:
+            table_data = self.to_df()
+            if isinstance(table_data, pd.DataFrame):
+                return h2o.H2OFrame(table_data)
+            h2o_df_series = pd.Series()
+            for table_name in table_data.index:
+                current_h2o_df = h2o.H2OFrame(table_data[table_name])
+                h2o_df_series[table_name] = current_h2o_df
+            return h2o_df_series
+        except NameError:
+            print('H2O not installed.')
+            return None
+
+    def from_h2odf(self, h2odf, output_table):
+        """Assign data in a H2O Data Frame to an output table in Kinetica.
+            To use this, make sure the gdf has the same schema as output table: number of columns and column names
+            have to match.
+
+            Args:
+                h2odf: The Pygdf Data Frame which will be written into output_table.
+                output_table: The output table in Kinetica (the actual table object, not just the name) that will
+                receive the content of h2odf.
+        """
+        self.from_df(df=h2odf.as_data_frame(), output_table=output_table)
 
     def complete(self):
         self._output_data._complete()

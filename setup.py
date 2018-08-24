@@ -9,5 +9,5 @@ setup(
     author='Kinetica',
     author_email='support@kinetica.com',
     url='http://kinetica.com',
-    py_modules = ['kinetica_proc', 'proc_example'],
+    py_modules=['kinetica_proc', 'examples/UDF_simple/proc_example']
 )

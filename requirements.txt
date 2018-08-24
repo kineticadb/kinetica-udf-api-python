@@ -1,0 +1,7 @@
+gpudb==6.1
+pandas
+pygdf
+requests
+h2o
+sklearn
+numpy
