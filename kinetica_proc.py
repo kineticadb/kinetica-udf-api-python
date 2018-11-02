@@ -929,6 +929,31 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             else:
                 output_table[col][:] = df[col]
 
+    def to_cudf(self):
+        """Access proc data as cuDF data frame (GPU - data frame). If the UDF input data is a single table then
+            a pygdf data frame is returned. If it is multiple tables then a Pandas Series where the elements are
+            of type cuDF data frame is returned.
+
+            Returns:
+                 cuDF Data Frame if single table, Pandas Series of cuDF Data Frames if multiple tables.
+                 None if cuDF is not installed.
+        """
+        return self.to_gdf()
+
+
+    def from_cudf(self, gdf, output_table):
+        """Assign data in a cuDF Data Frame to an output table in Kinetica.
+            To use this, make sure the gdf has the same schema as output table: number of columns and column names
+            have to match.
+
+            Args:
+                gdf: The cuDF Data Frame which will be written into output_table.
+                output_table: The output table in Kinetica (the actual table object, not just the name) that will
+                receive the content of gdf.
+        """
+        self.from_gdf()
+
+    
     def to_gdf(self):
         """Access proc data as pygdf data frame (GPU - data frame). If the UDF input data is a single table then
             a pygdf data frame is returned. If it is multiple tables then a Pandas Series where the elements are
