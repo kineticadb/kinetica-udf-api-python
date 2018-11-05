@@ -951,7 +951,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 output_table: The output table in Kinetica (the actual table object, not just the name) that will
                 receive the content of gdf.
         """
-        self.from_gdf()
+        self.from_gdf( gdf, output_table )
 
     
     def to_gdf(self):
