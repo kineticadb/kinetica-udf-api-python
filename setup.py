@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name='kinetica_proc',
-    version='6.2.0',
+    version='7.0.0',
     description='Python libraries to create procs in Kinetica.',
     author='Kinetica',
     author_email='support@kinetica.com',
