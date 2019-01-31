@@ -1,15 +1,16 @@
 GPUdb Python UDF API Changelog
 ==============================
 
-Version 7.0.0 - TBD
+Version 7.0.0 - 2019-01-31
 --------------------------
 
 -   Version release
 
-Version 6.2.0 - 2018-08-24
+
+Version 6.2.0 - 2018-02-11
 --------------------------
 
--   Added support for GPU dataframe and H2O dataframe
+-   Version release
 
 
 Version 6.1.0 - 2017-10-10
