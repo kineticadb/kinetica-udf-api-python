@@ -50,9 +50,9 @@ Install *PyGDF*:
 ```
   conda install -c numba -c conda-forge -c gpuopenanalytics/label/dev -c defaults pygdf=0.1.0a2
 ```
-Install the *Kinetica Python* API:
+Install the *Kinetica Python* API where *n* is the desired [version from PyPI](https://pypi.org/project/gpudb/#history):
 ```
-  pip install gpudb
+  pip install gpudb==6.2.0.n
 ```
 Add the *Kinetica Python UDF* API repo's root directory to the PYTHONPATH:
 ```
