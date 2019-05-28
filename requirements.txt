@@ -1,4 +1,4 @@
-gpudb==6.1
+gpudb~=7.0
 pandas
 pygdf
 requests
