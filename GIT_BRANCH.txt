@@ -1,2 +1,0 @@
-Branch 'release/v6.2.0' created 2018-02-11 15:21:57
-Previous commit: a6f366a6cfc17fa63ae072db866b8e15858e5aa4 2018-01-05 14:55:20 -0500
