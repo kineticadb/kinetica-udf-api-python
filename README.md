@@ -26,6 +26,14 @@ module is available on PyPI.  The following example demonstrates installing the
   /opt/gpudb/udf/api/python/gpudb-pip.sh install simplejson
   ```
 
+### Installing the Pre-requisite Modules ###
+
+Install the required modules:
+
+  ```
+  /opt/gpudb/udf/api/python/gpudb-pip.sh install -r requirements.txt
+  ```
+
 ### Installing Python Modules Using easy_install ###
 
 If you cannot use pip (because the package is not available on PyPI, or there is

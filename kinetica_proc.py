@@ -11,10 +11,11 @@ import pandas as pd
 try:
     import h2o
     from pygdf.dataframe import DataFrame
-except (OSError, ImportError):
+except (OSError, ImportError, AttributeError) as e:
     print('Warning: Your environment is not properly setup for using pygdf and/or h2o.'
           ' Please refer to /examples/README to fix this.\n')
 
+    
 if sys.version_info < (3,):
     def _decode_char(b):
         return b[::-1].rstrip(b"\x00")
