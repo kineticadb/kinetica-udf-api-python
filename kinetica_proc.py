@@ -12,8 +12,7 @@ try:
     import h2o
     from pygdf.dataframe import DataFrame
 except (OSError, ImportError, AttributeError) as e:
-    print('Warning: Your environment is not properly setup for using pygdf and/or h2o.'
-          ' Please refer to /examples/README to fix this.\n')
+    pass
 
     
 if sys.version_info < (3,):
