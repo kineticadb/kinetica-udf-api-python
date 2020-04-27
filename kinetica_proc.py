@@ -556,13 +556,13 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.DECIMAL: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value * 10000)),
                     ProcData.ColumnType.DOUBLE: lambda data, index, value: _double_struct.pack_into(data, index * 8, value),
                     ProcData.ColumnType.FLOAT: lambda data, index, value: _float_struct.pack_into(data, index * 4, value),
-                    ProcData.ColumnType.INT: lambda data, index, value: _int32_struct.pack_into(data, index * 4, value),
-                    ProcData.ColumnType.INT8: lambda data, index, value: _int8_struct.pack_into(data, index, value),
-                    ProcData.ColumnType.INT16: lambda data, index, value: _int16_struct.pack_into(data, index * 2, value),
-                    ProcData.ColumnType.IPV4: lambda data, index, value: _int32_struct.pack_into(data, index * 4, value),
-                    ProcData.ColumnType.LONG: lambda data, index, value: _int64_struct.pack_into(data, index * 8, value),
+                    ProcData.ColumnType.INT: lambda data, index, value: _int32_struct.pack_into(data, index * 4, int(value)),
+                    ProcData.ColumnType.INT8: lambda data, index, value: _int8_struct.pack_into(data, index, int(value)),
+                    ProcData.ColumnType.INT16: lambda data, index, value: _int16_struct.pack_into(data, index * 2, int(value)),
+                    ProcData.ColumnType.IPV4: lambda data, index, value: _int32_struct.pack_into(data, index * 4, int(value)),
+                    ProcData.ColumnType.LONG: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value)),
                     ProcData.ColumnType.TIME: lambda data, index, value: _uint32_struct.pack_into(data, index * 4, _encode_time(value)),
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: _int64_struct.pack_into(data, index * 8, value)
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value))
                 }[self._type]
 
         def __setitem__(self, index, value):
@@ -903,13 +903,18 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         """
         table_data = pd.Series()
         for in_table in self.input_data:
-            current_table_data = {}
+            current_table_data = pd.DataFrame()
             for in_column in in_table:
-                current_table_data[in_column.name] = in_column
-            table_data[in_table.name] = pd.DataFrame(data=current_table_data)
+                # Need to use the slice to be able to use a slice on the column
+                # later
+                current_table_data[in_column.name] = in_column[:]
+            # end inner loop
+
+            table_data[in_table.name] = current_table_data
         if len(table_data) == 1:
             return table_data[0]
         return table_data
+
 
     def from_df(self, df, output_table):
         """Assign data in a Pandas Data Frame to an output table in Kinetica.
@@ -922,12 +927,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 receive the content of df.
         """
         for col in df.columns:
-            # pandas object data, string
-            if df.dtypes[col] == "O":
-                output_table[col][:] = df[col].astype(str)
-            # pandas int, float
-            else:
-                output_table[col][:] = df[col]
+            output_table[col][:] = df[col]
+
 
     def to_cudf(self):
         """Access proc data as cuDF data frame (GPU - data frame). If the UDF input data is a single table then
