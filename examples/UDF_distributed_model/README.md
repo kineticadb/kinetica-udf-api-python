@@ -8,15 +8,15 @@ necessary Python packages.
 Run the data ingestion (from within this folder under /examples/UDF_distributed_model/) to setup the table 
 for this example:
 ```
-  python setup_table.py
+  python setup_db.py
 ```
 
 Then you're ready to run the scripts that register and execute dt_train.py and dt_test as two separate, distributed 
-UDFs (Modify Kinetica instance IP accordingly):
+UDFs (supply Kinetica host, user, and password as necessary):
 
 ```
- python register_execute_train.py
- python register_execute_test.py
+ python register_execute_train.py [--host <kinetica-host> [--username <kinetica-user> --password <kinetica-pass>]]
+ python register_execute_test.py [--host <kinetica-host> [--username <kinetica-user> --password <kinetica-pass>]]
 ```
 You can monitor the UDF's log output under your logs directory:
 ```
