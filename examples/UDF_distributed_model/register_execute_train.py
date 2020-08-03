@@ -1,6 +1,7 @@
 import gpudb
 import os
 from util import test_environment as te
+import argparse
 
 
 def main(db_handle):
@@ -24,4 +25,11 @@ def main(db_handle):
 
 
 if __name__ == "__main__":
-    main(gpudb.GPUdb(encoding='BINARY', host='127.0.0.1', port='9191'))
+    # Set up args
+    parser = argparse.ArgumentParser(description='Register and execute the Python Distributed Model Training UDF example.')
+    parser.add_argument('--host', default='127.0.0.1', help='Kinetica host to run example against')
+    parser.add_argument('--username', default='', help='Username of user to run example with')
+    parser.add_argument('--password', default='', help='Password of user')
+
+    args = parser.parse_args()
+    main(gpudb.GPUdb(host=['http://' + args.host + ':9191'], username=args.username, password=args.password))

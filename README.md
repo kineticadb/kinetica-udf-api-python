@@ -7,7 +7,7 @@ https://github.com/kineticadb/kinetica-udf-api-python
 ## UDF Reference Documentation ##
 For information about UDFs in Kinetica, please see the User-Defined Functions
 section of the Kinetica documentation 
-(https://www.kinetica.com/docs/concepts/udf.html).
+(https://www.kinetica.com/docs/7.1/concepts/udf.html).
 
 ## Installing the Kinetica UDF APIs for Python ##
 Note that the UDF API must be installed on *all* of the machines in the Kinetica 
@@ -38,7 +38,7 @@ Install the required modules:
 
 If you cannot use pip (because the package is not available on PyPI, or there is
 no internet connectivity, then you can use easy_install instead.  In this
-instance, you can place the whell or tgz file into the /opt/gpudb/thirdparty
+instance, you can place the wheel or tgz file into the /opt/gpudb/thirdparty
 folder on the head node and use the
 /opt/gpudb/core/bin/gpudb_hosts_rsync_to.sh command to copy just the one file
 to all hosts.  Then use the /opt/gpudb/core/bin/gpudb_hosts_ssh_execute.sh

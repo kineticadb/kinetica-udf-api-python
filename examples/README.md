@@ -29,7 +29,7 @@ environment that contains all dependencies required for pygdf, using the .yml fi
 ```
 Then activate the Conda environment:
 ```
-  source activate proc_data_dev
+  conda activate proc_data_dev
 ```
 Install pygdf:
 ```
@@ -37,7 +37,7 @@ Install pygdf:
 ```
 Also make sure to install gpudb:
 ```
-  pip install gpudb==7.0.0.0
+  pip install gpudb==7.1.0
 ```
 
 Then follow these instructions to install the latest version of H2O:
@@ -57,7 +57,7 @@ Make sure to add the project home folder as content root to the PYTHONPATH:
 ```
 ### Standalone via UDF-simulator ###
 These examples can be run (and debugged) without actually having to deploy a UDF to Kinetica. Instead
-the UDF-simulator (located under the projects /util direcotry) is used. 
+the UDF-simulator (located under the projects /util directory) is used. 
 Move into the example folder of this project (/examples) and run any of them. Currently available are:
 ```
   python h2o_glm.py

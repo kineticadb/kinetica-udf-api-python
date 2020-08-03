@@ -1,5 +1,9 @@
 # GPUdb Python UDF API Changelog
 
+## Version 7.1
+
+### Version 7.1.0.0 - TBD
+
 
 ## Version 7.0
 
