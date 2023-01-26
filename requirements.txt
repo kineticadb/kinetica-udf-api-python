@@ -1,8 +1,8 @@
-gpudb~=7.0
+gpudb~=7.1
 pandas
 numba==0.35.0
 pygdf
 requests
-h2o
 sklearn
 numpy
+h2o
