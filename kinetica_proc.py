@@ -1,4 +1,9 @@
-import collections
+# ---------------------------------------------------------------------------
+# File     : kinetica_proc.py
+# Purpose  : API for Kinetica UDFs in Python.
+# Copyright: Kinetica (2021)
+# ---------------------------------------------------------------------------
+
 import datetime
 import decimal
 import fcntl
@@ -7,15 +12,16 @@ import mmap
 import os
 import struct
 import sys
-import pandas as pd
+import uuid
+
 try:
     import h2o
-    from pygdf.dataframe import DataFrame
 except (OSError, ImportError, AttributeError) as e:
     pass
 
-    
 if sys.version_info < (3,):
+    from collections import Mapping, Sequence
+
     def _decode_char(b):
         return b[::-1].rstrip(b"\x00")
 
@@ -40,6 +46,8 @@ if sys.version_info < (3,):
     _null = b"\x01"
     _null_terminator = b"\x00"
 else:
+    from collections.abc import Mapping, Sequence
+
     def _decode_char(b):
         return b[::-1].rstrip(b"\x00").decode(errors="replace")
 
@@ -64,6 +72,7 @@ else:
     xrange = range
 
 
+_bool_struct = struct.Struct("=?")
 _char1_struct = struct.Struct("c")
 _char2_struct = struct.Struct("2s")
 _char4_struct = struct.Struct("4s")
@@ -241,7 +250,7 @@ class _MemoryMappedFile(object):
                 self.remap(minSize + (mmap.PAGESIZE - (minSize % mmap.PAGESIZE)))
 
 
-class _ReadOnlyMapping(collections.Mapping):
+class _ReadOnlyMapping(Mapping):
     def __init__(self, internal):
         self._internal = internal
 
@@ -300,37 +309,41 @@ def _encode_time(value):
 
 class ProcData(_SingletonType("_Singleton", (object,), {})):
     class ColumnType(object):
-        BYTES     = 0x0000002
-        CHAR1     = 0x0080000
-        CHAR2     = 0x0100000
-        CHAR4     = 0x0001000
-        CHAR8     = 0x0002000
-        CHAR16    = 0x0004000
-        CHAR32    = 0x0200000
-        CHAR64    = 0x0400000
-        CHAR128   = 0x0800000
-        CHAR256   = 0x1000000
-        DATE      = 0x2000000
-        DATETIME  = 0x0000200
-        DECIMAL   = 0x8000000
-        DOUBLE    = 0x0000010
-        FLOAT     = 0x0000020
-        INT       = 0x0000040
-        INT8      = 0x0020000
-        INT16     = 0x0040000
-        IPV4      = 0x0008000
-        LONG      = 0x0000080
-        STRING    = 0x0000001
-        TIME      = 0x4000000
-        TIMESTAMP = 0x0010000
+        BOOLEAN   = 0x20000000
+        BYTES     = 0x00000002
+        CHAR1     = 0x00080000
+        CHAR2     = 0x00100000
+        CHAR4     = 0x00001000
+        CHAR8     = 0x00002000
+        CHAR16    = 0x00004000
+        CHAR32    = 0x00200000
+        CHAR64    = 0x00400000
+        CHAR128   = 0x00800000
+        CHAR256   = 0x01000000
+        DATE      = 0x02000000
+        DATETIME  = 0x00000200
+        DECIMAL   = 0x08000000
+        DOUBLE    = 0x00000010
+        FLOAT     = 0x00000020
+        INT       = 0x00000040
+        INT8      = 0x00020000
+        INT16     = 0x00040000
+        IPV4      = 0x00008000
+        LONG      = 0x00000080
+        STRING    = 0x00000001
+        TIME      = 0x04000000
+        TIMESTAMP = 0x00010000
+        ULONG     = 0x00000800
+        UUID      = 0x00000008
 
 
-    class Column(collections.Sequence):
+    class Column(Sequence):
         def __init__(self, file, writable):
             self._name = file.read_string()
             self._type = file.read_uint64()
 
             self._type_size = {
+                ProcData.ColumnType.BOOLEAN:     1,
                 ProcData.ColumnType.BYTES:       8,
                 ProcData.ColumnType.CHAR1:       1,
                 ProcData.ColumnType.CHAR2:       2,
@@ -353,7 +366,9 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 ProcData.ColumnType.LONG:        8,
                 ProcData.ColumnType.STRING:      8,
                 ProcData.ColumnType.TIME:        4,
-                ProcData.ColumnType.TIMESTAMP:   8
+                ProcData.ColumnType.TIMESTAMP:   8,
+                ProcData.ColumnType.ULONG:       8,
+                ProcData.ColumnType.UUID:       16
             }.get(self._type, None)
 
             if self._type_size is None:
@@ -396,6 +411,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 self._var_type = False
 
                 self._decode_value = {
+                    ProcData.ColumnType.BOOLEAN: lambda data, index: _bool_struct.unpack_from(data, index)[0],
                     ProcData.ColumnType.CHAR1: lambda data, index: _decode_char(_char1_struct.unpack_from(data, index)[0]),
                     ProcData.ColumnType.CHAR2: lambda data, index: _decode_char(_char2_struct.unpack_from(data, index * 2)[0]),
                     ProcData.ColumnType.CHAR4: lambda data, index: _decode_char(_char4_struct.unpack_from(data, index * 4)[0]),
@@ -416,10 +432,13 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.IPV4: lambda data, index: _int32_struct.unpack_from(data, index * 4)[0],
                     ProcData.ColumnType.LONG: lambda data, index: _int64_struct.unpack_from(data, index * 8)[0],
                     ProcData.ColumnType.TIME: lambda data, index: _decode_time(_uint32_struct.unpack_from(data, index * 4)[0]),
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index: _int64_struct.unpack_from(data, index * 8)[0]
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index: _int64_struct.unpack_from(data, index * 8)[0],
+                    ProcData.ColumnType.ULONG: lambda data, index: _uint64_struct.unpack_from(data, index * 8)[0],
+                    ProcData.ColumnType.UUID: lambda data, index: uuid.UUID(bytes=_char16_struct.unpack_from(data, index * 16)[0][15::-1])
                 }[self._type]
 
                 self._decode_multiple = {
+                    ProcData.ColumnType.BOOLEAN: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "?", data, index)),
                     ProcData.ColumnType.CHAR1: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from(str(count) + "c", data, index)],
                     ProcData.ColumnType.CHAR2: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("2s" * count, data, index * 2)],
                     ProcData.ColumnType.CHAR4: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("4s" * count, data, index * 4)],
@@ -440,7 +459,9 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.IPV4: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "i", data, index * 4)),
                     ProcData.ColumnType.LONG: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "q", data, index * 8)),
                     ProcData.ColumnType.TIME: lambda data, index, count: [_decode_time(value) for value in struct.unpack_from("=" + str(count) + "I", data, index * 4)],
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "q", data, index * 8))
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "q", data, index * 8)),
+                    ProcData.ColumnType.ULONG: lambda data, index, count: list(struct.unpack_from('=' + str(count) + "Q", data, index * 8)),
+                    ProcData.ColumnType.UUID: lambda data, index, count: list(uuid.UUID(bytes=value[15::-1]) for value in struct.unpack_from("16s" * count, data, index * 16))
                 }[self._type]
 
         @property
@@ -542,6 +563,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
 
             if not self._var_type:
                 self._encode_value = {
+                    ProcData.ColumnType.BOOLEAN: lambda data, index, value: _bool_struct.pack_into(data, index, value),
                     ProcData.ColumnType.CHAR1: lambda data, index, value: _char1_struct.pack_into(data, index, _encode_char(value, 1)),
                     ProcData.ColumnType.CHAR2: lambda data, index, value: _char2_struct.pack_into(data, index * 2, _encode_char(value, 2)),
                     ProcData.ColumnType.CHAR4: lambda data, index, value: _char4_struct.pack_into(data, index * 4, _encode_char(value, 4)),
@@ -562,7 +584,9 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.IPV4: lambda data, index, value: _int32_struct.pack_into(data, index * 4, int(value)),
                     ProcData.ColumnType.LONG: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value)),
                     ProcData.ColumnType.TIME: lambda data, index, value: _uint32_struct.pack_into(data, index * 4, _encode_time(value)),
-                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value))
+                    ProcData.ColumnType.TIMESTAMP: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value)),
+                    ProcData.ColumnType.ULONG: lambda data, index, value: _uint64_struct.pack_into(data, index * 8, long(value)),
+                    ProcData.ColumnType.UUID: lambda data, index, value: _char16_struct.pack_into(data, index * 16, value.bytes[15::-1])
                 }[self._type]
 
         def __setitem__(self, index, value):
@@ -729,7 +753,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             self._size = size
 
 
-    class Table(collections.Sequence):
+    class Table(Sequence):
         def __init__(self, file, column_class):
             self._name = file.read_string()
             self._columns = [column_class(file) for _ in xrange(0, file.read_uint64())]
@@ -785,7 +809,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 column._complete()
 
 
-    class DataSet(collections.Sequence):
+    class DataSet(Sequence):
         def __init__(self, file, table_class):
             self._tables = [table_class(file) for _ in xrange(0, file.read_uint64())]
             self._table_dict = {table.name: table for table in self._tables}
@@ -901,6 +925,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             Returns:
                  Pandas Data Frame if single table, Pandas Series of Data Frames if multiple tables.
         """
+        import pandas as pd
+
         table_data = pd.Series()
         for in_table in self.input_data:
             current_table_data = pd.DataFrame()
@@ -967,10 +993,10 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         try:
             table_data = self.to_df()
             if isinstance(table_data, pd.DataFrame):
-                return DataFrame.from_pandas(table_data)
+                return pygdf.dataframe.DataFrame.from_pandas(table_data)
             gpu_df_series = pd.Series()
             for table_name in table_data.index:
-                current_gpu_df = DataFrame.from_pandas(table_data[table_name])
+                current_gpu_df = pygdf.dataframe.DataFrame.from_pandas(table_data[table_name])
                 gpu_df_series[table_name] = current_gpu_df
             return gpu_df_series
         except NameError:

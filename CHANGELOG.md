@@ -2,6 +2,22 @@
 
 ## Version 7.1
 
+### Version 7.1.0.3 - 2023-01-26
+
+-   Moved import of pandas into functions that require it, for performance of
+    non-pandas runs
+
+
+### Version 7.1.0.2 - 2022-10-03
+
+-   Added support for BOOLEAN data type.
+
+
+### Version 7.1.0.1 - 2022-07-08
+
+-   Added support for ULONG and UUID data types.
+
+
 ### Version 7.1.0.0 - TBD
 
 
@@ -32,3 +48,4 @@
 ## Version 6.0.0 - 2017-01-24
 
 -   Initial release.
+
