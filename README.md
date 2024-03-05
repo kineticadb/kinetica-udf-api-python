@@ -1,75 +1,62 @@
-# Kinetica UDF Python API #
+<h3 align="center" style="margin:0px">
+	<img width="200" src="https://www.kinetica.com/wp-content/uploads/2018/08/kinetica_logo.svg" alt="Kinetica Logo"/>
+</h3>
+<h5 align="center" style="margin:0px">
+	<a href="https://www.kinetica.com/">Website</a>
+	|
+	<a href="https://docs.kinetica.com/7.2/">Docs</a>
+	|
+	<a href="https://docs.kinetica.com/7.2/udf/python/writing/">UDF API Docs</a>
+	|
+	<a href="https://join.slack.com/t/kinetica-community/shared_invite/zt-1bt9x3mvr-uMKrXlSDXfy3oU~sKi84qg">Community Slack</a>   
+</h5>
 
-This document describes how to use the Kinetica UDF Python API.
+
+# Kinetica Python UDF API
+
+-  [Overview](#overview)
+-  [API](#api)
+-  [Example](#example)
+-  [Apache Arrow](#apache-arrow)
+-  [UDF Reference Documentation](#udf-reference-documentation)
+-  [Support](#support)
+-  [Contact Us](#contact-us)
+
+
+## Overview
+
+This is the 7.2 version of the server-side Python UDF API for Kinetica.  UDFs
+are server-side programs written in this API and then installed, configured, and
+initiated through a separate client-side management API.  These two APIs are
+independent of each other and do not need to be written in the same language;
+e.g., a UDF can be written in the Python UDF API and managed in SQL (from
+Workbench, KiSQL, or other database client).
 
 The source code for this project can be found at
 https://github.com/kineticadb/kinetica-udf-api-python
 
-## UDF Reference Documentation ##
+For changes to the client-side API, please refer to
+[CHANGELOG.md](CHANGELOG.md).
 
-For information about UDFs in Kinetica, please see the User-Defined Functions
-section of the Kinetica documentation 
-(https://www.kinetica.com/docs/7.1/concepts/udf.html).
 
-## Installing the Kinetica UDF APIs for Python ##
+## API
 
-Note that the UDF API must be installed on *all* of the machines in the Kinetica
-cluster if running UDFs in distributed mode, as each rank will run procs locally.
+This repository contains the Kinetica Python UDF API solely contained in the
+`kinetica-proc.py` file.
 
-### Installing Python Modules with gpudb_pip.sh ###
+This file will be available within the server environment and can be imported
+into the UDF as follows:
 
-Kinetica provides pip preinstalled in our python environment and also a
-"gpudb_pip.sh" script which will automate running pip on all machines in the
-Kinetica cluster.  It should be run as the gpudb user on the head node of the
-cluster and will ensure that any dependent modules are available on all
-machines.  This method is preferred if you have internet connectivity and the
-module is available on PyPI.  The following example demonstrates installing the
-"simplejson" module:
+    from kinetica_proc import ProcData
 
-  ```
-  /opt/gpudb/udf/api/python/gpudb-pip.sh install simplejson
-  ```
 
-### Installing the Pre-requisite Modules ###
+## Example
 
-Install the required modules:
+This repository also contains several example projects in the `examples`
+directory, which implement UDFs in the Python UDF API.
 
-  ```
-  /opt/gpudb/udf/api/python/gpudb-pip.sh install -r requirements.txt
-  ```
 
-### Installing Python Modules Using easy_install ###
-
-If you cannot use pip (because the package is not available on PyPI, or there is
-no internet connectivity, then you can use easy_install instead.  In this
-instance, you can place the wheel or tgz file into the /opt/gpudb/thirdparty
-folder on the head node and use the
-/opt/gpudb/core/bin/gpudb_hosts_rsync_to.sh command to copy just the one file
-to all hosts.  Then use the /opt/gpudb/core/bin/gpudb_hosts_ssh_execute.sh
-command combined with the /opt/gpudb/core/bin/gpudb_env.sh command to install
-the module.
-
-  ```
-  # Assumes that you have already downloaded the python module to the head
-  # node of the cluster, and it is in the current folder and named
-  # 'python-module.tgz'
-  /opt/gpudb/core/bin/gpudb_hosts_rsync_to.sh python-module.tgz /tmp/python-module.tgz
-  /opt/gpudb/core/bin/gpudb_hosts_ssh_execute.sh /opt/gpudb/core/bin/gpudb_env.sh easy_install /tmp/python-module.tgz
-  ```
-
-## Using the UDF API without installing ##
-
-If you do not wish to install the API, or do not have permission, you can add
-the UDF API to your PYTHONPATH by editing the /opt/gpudb/core/bin/gpudb_execute_proc.sh
-script on each machine in the Kinetica cluster.  By default, the gpudb_execute_proc.sh
-script will add a PYTHONPATH of /opt/gpudb/udf/thirdparty/lib/python2.7.  You
-can place any dependencies there on the head node and run the
-gpudb_distribute_thirdparty.sh script to copy it to all worker nodes.  As a
-warning, this will replace the entire contents of that thirdparty directory
-with the contents on the head node, but it will also make a backup of the
-thirdparty folder and place it in the udf folder before overwriting.
-
-## Apache Arrow ##
+## Apache Arrow
 
 The Kinetica Python UDF API supports Apache Arrow natively. A few examples
 that demonstrate using Apache Arrow with Kinetica are available:
@@ -77,3 +64,36 @@ that demonstrate using Apache Arrow with Kinetica are available:
 * [UDF Distributed Model](https://github.com/kineticadb/kinetica-udf-api-python/tree/master/examples/UDF_distributed_model)
 * [UDF H2O Generalized Linear Model](https://github.com/kineticadb/kinetica-udf-api-python/tree/master/examples/UDF_h2o_glm)
 * [UDF H2O Random Forest Model](https://github.com/kineticadb/kinetica-udf-api-python/tree/master/examples/UDF_h2o_rf)
+
+
+## UDF Reference Documentation
+
+For information about UDFs in Kinetica, please see the User-Defined Functions
+sections of the Kinetica documentation:
+
+* **UDF Concepts**:  https://docs.kinetica.com/7.2/udf_overview/
+* **Python UDF API**:  https://docs.kinetica.com/7.2/udf/python/writing/
+* **Python UDF Management API**:  https://docs.kinetica.com/7.2/udf/python/running/
+* **Python UDF Tutorial**:  https://docs.kinetica.com/7.2/guides/udf_python_guide/
+* **Python UDF Examples**:  https://docs.kinetica.com/7.2/udf/python/examples/
+
+
+## Support
+
+For bugs, please submit an
+[issue on Github](https://github.com/kineticadb/kinetica-udf-api-python/issues).
+
+For support, you can post on
+[stackoverflow](https://stackoverflow.com/questions/tagged/kinetica) under the
+``kinetica`` tag or
+[Slack](https://join.slack.com/t/kinetica-community/shared_invite/zt-1bt9x3mvr-uMKrXlSDXfy3oU~sKi84qg).
+
+
+## Contact Us
+
+* Ask a question on Slack:
+  [Slack](https://join.slack.com/t/kinetica-community/shared_invite/zt-1bt9x3mvr-uMKrXlSDXfy3oU~sKi84qg)
+* Follow on GitHub:
+  [Follow @kineticadb](https://github.com/kineticadb) 
+* Email us:  <support@kinetica.com>
+* Visit:  <https://www.kinetica.com/contact/>

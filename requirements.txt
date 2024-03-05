@@ -1,4 +1,4 @@
-gpudb~=7.1
+gpudb~=7.2
 pandas
 numba==0.35.0
 pygdf

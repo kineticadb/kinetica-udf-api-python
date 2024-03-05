@@ -3,11 +3,11 @@
 from distutils.core import setup
 
 setup(
-    name='kinetica_proc',
-    version='7.1.0.3',
-    description='Python libraries to create procs in Kinetica.',
-    author='Kinetica',
-    author_email='support@kinetica.com',
-    url='http://kinetica.com',
-    py_modules=['kinetica_proc', 'examples/UDF_simple/proc_example']
+    name = 'kinetica_proc',
+    version = '7.2.0.0',
+    description = 'Python libraries to create procs in Kinetica.',
+    author = 'Kinetica DB, Inc.',
+    author_email = 'support@kinetica.com',
+    url = 'https://www.kinetica.com',
+    py_modules = ['kinetica_proc', 'examples/UDF_simple/proc_example']
 )

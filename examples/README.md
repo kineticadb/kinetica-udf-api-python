@@ -37,7 +37,7 @@ Install pygdf:
 ```
 Also make sure to install gpudb:
 ```
-  pip install gpudb==7.1.0
+  pip install gpudb==7.2.0
 ```
 
 Then follow these instructions to install the latest version of H2O:

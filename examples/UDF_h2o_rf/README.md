@@ -6,7 +6,7 @@ Follow the instructions in the examples home folder [README.md](../README.md) to
 necessary Python packages.
 
 This demo uses the Kinetica File System (KiFS) for model storage. Follow the instructions in the 
-documentation to make sure KiFS is setup and configured:  https://www.kinetica.com/docs/7.1/tools/kifs.html
+documentation to make sure KiFS is setup and configured:  https://docs.kinetica.com/7.2/tools/kifs/
 
 Run the data ingestion (from within this folder under /examples/UDF_h2o_glm/) to setup the table for the UDF:
 ```

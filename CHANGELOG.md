@@ -1,5 +1,12 @@
 # GPUdb Python UDF API Changelog
 
+## Version 7.2
+
+## Version 7.2.0.0 - 2024-03-04
+
+-   Version release
+
+
 ## Version 7.1
 
 ### Version 7.1.0.3 - 2023-01-26
@@ -18,7 +25,7 @@
 -   Added support for ULONG and UUID data types.
 
 
-### Version 7.1.0.0 - TBD
+### Version 7.1.0.0 - 2020-08-03
 
 
 ## Version 7.0
@@ -48,4 +55,3 @@
 ## Version 6.0.0 - 2017-01-24
 
 -   Initial release.
-
