@@ -4,8 +4,8 @@ from distutils.core import setup
 
 setup(
     name = 'kinetica_proc',
-    version = '7.2.0.0',
-    description = 'Python libraries to create procs in Kinetica.',
+    version = '7.2.0.1',
+    description = 'Python libraries to create UDFs in Kinetica.',
     author = 'Kinetica DB, Inc.',
     author_email = 'support@kinetica.com',
     url = 'https://www.kinetica.com',

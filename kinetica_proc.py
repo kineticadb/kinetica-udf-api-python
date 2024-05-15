@@ -8,6 +8,7 @@ import datetime
 import decimal
 import fcntl
 import itertools
+import json
 import mmap
 import os
 import struct
@@ -309,6 +310,7 @@ def _encode_time(value):
 
 class ProcData(_SingletonType("_Singleton", (object,), {})):
     class ColumnType(object):
+        ARRAY     = 0x80000000
         BOOLEAN   = 0x20000000
         BYTES     = 0x00000002
         CHAR1     = 0x00080000
@@ -329,12 +331,14 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         INT8      = 0x00020000
         INT16     = 0x00040000
         IPV4      = 0x00008000
+        JSON      = 0x00000100
         LONG      = 0x00000080
         STRING    = 0x00000001
         TIME      = 0x04000000
         TIMESTAMP = 0x00010000
         ULONG     = 0x00000800
         UUID      = 0x00000008
+        VECTOR    = 0x40000000
 
 
     class Column(Sequence):
@@ -343,6 +347,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             self._type = file.read_uint64()
 
             self._type_size = {
+                ProcData.ColumnType.ARRAY:       8,
                 ProcData.ColumnType.BOOLEAN:     1,
                 ProcData.ColumnType.BYTES:       8,
                 ProcData.ColumnType.CHAR1:       1,
@@ -363,12 +368,14 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 ProcData.ColumnType.INT8:        1,
                 ProcData.ColumnType.INT16:       2,
                 ProcData.ColumnType.IPV4:        4,
+                ProcData.ColumnType.JSON:        8,
                 ProcData.ColumnType.LONG:        8,
                 ProcData.ColumnType.STRING:      8,
                 ProcData.ColumnType.TIME:        4,
                 ProcData.ColumnType.TIMESTAMP:   8,
                 ProcData.ColumnType.ULONG:       8,
-                ProcData.ColumnType.UUID:       16
+                ProcData.ColumnType.UUID:       16,
+                ProcData.ColumnType.VECTOR:      8
             }.get(self._type, None)
 
             if self._type_size is None:
@@ -398,16 +405,23 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             if var_data_path:
                 self._var_data.map(var_data_path, writable)
 
-            if self._type == ProcData.ColumnType.BYTES:
-                self._var_string = False
+            if self._type == ProcData.ColumnType.ARRAY:
+                self._var_type = True
+                self._decode_var_value = lambda var_data, start, end: None if end - start <= 1 else json.loads(_decode_string(struct.unpack_from(str(end - start - 1) + "s", var_data, start)[0]))
+                self._encode_var_value = lambda var_data, value: var_data.write(_encode_string(json.dumps(value)), True)
+            elif self._type == ProcData.ColumnType.BYTES:
                 self._var_type = True
                 self._decode_var_value = lambda var_data, start, end: b"" if start == end else struct.unpack_from(str(end - start) + "s", var_data, start)[0]
-            elif self.type == ProcData.ColumnType.STRING:
-                self._var_string = True
+                self._encode_var_value = lambda var_data, value: var_data.write(value, False)
+            elif self._type in (ProcData.ColumnType.JSON, ProcData.ColumnType.STRING):
                 self._var_type = True
-                self._decode_var_value = lambda var_data, start, end: "" if start == end else _decode_string(struct.unpack_from(str(end - start - 1) + "s", var_data, start)[0])
+                self._decode_var_value = lambda var_data, start, end: "" if end - start <= 1 else _decode_string(struct.unpack_from(str(end - start - 1) + "s", var_data, start)[0])
+                self._encode_var_value = lambda var_data, value: var_data.write(_encode_string(value), True)
+            elif self._type == ProcData.ColumnType.VECTOR:
+                self._var_type = True
+                self._decode_var_value = lambda var_data, start, end: None if start == end else list(struct.unpack_from("=" + str((end - start) // 4) + "f", var_data, start))
+                self._encode_var_value = lambda var_data, value: var_data.write(struct.pack("=" + str(len(value)) + "f", *value), False)
             else:
-                self._var_string = None
                 self._var_type = False
 
                 self._decode_value = {
@@ -649,9 +663,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             if index >= self._size:
                 raise IndexError("Insufficient table size")
 
-            var_string = self._var_string
-
-            if var_string is None:
+            if not self._var_type:
                 if self._is_nullable:
                     if value is None:
                         self._nulls.data[index] = _null
@@ -669,9 +681,9 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                         self._nulls.data[index] = _null
                     else:
                         self._nulls.data[index] = _not_null
-                        var_data.write(_encode_string(value) if var_string else value, var_string)
+                        self._encode_var_value(var_data, value)
                 else:
-                    var_data.write(_encode_string(value) if var_string else value, var_string)
+                    self._encode_var_value(var_data, value)
 
             self._pos += 1
             return index
@@ -680,10 +692,9 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             index = self._pos
             data = self._data.data
             size = self._size
-            var_string = self._var_string
 
             try:
-                if var_string is None:
+                if not self._var_type:
                     encode_value = self._encode_value
 
                     if self._is_nullable:
@@ -709,6 +720,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                             index += 1
                 else:
                     var_data = self._var_data
+                    encode_var_value = self._encode_var_value
 
                     if self._is_nullable:
                         nulls = self._nulls.data
@@ -723,7 +735,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                                     nulls[index] = _null
                                 else:
                                     nulls[index] = _not_null
-                                    var_data.write(_encode_string(value) if var_string else value, var_string)
+                                    encode_var_value(var_data, value)
 
                             index += 1
                     else:
@@ -732,7 +744,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                                 raise IndexError("Insufficient table size")
                             else:
                                 _uint64_struct.pack_into(data, index * 8, var_data.pos)
-                                var_data.write(_encode_string(value) if var_string else value, var_string)
+                                encode_var_value(var_data, value)
 
                             index += 1
             finally:
@@ -741,7 +753,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
             return index - 1
 
         def _complete(self):
-            if self._var_string is not None:
+            if self._var_type:
                 self._var_data.truncate()
 
         def _reserve(self, size):
