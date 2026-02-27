@@ -2,11 +2,16 @@
 
 ## Version 7.2
 
+## Version 7.2.0.2 - 2026-02-27
+
+-   Added 8-byte & 12-byte decimal support to UDFs
+    *(requires Kinetica v7.2.3.9 or later)*
+
+
 ## Version 7.2.0.1 - 2024-05-15
 
 -   Added array, JSON, and vector support to UDFs
     *(requires Kinetica v7.2.0.8 or later)*
-
 
 
 ## Version 7.2.0.0 - 2024-03-04

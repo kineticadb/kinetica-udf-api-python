@@ -83,6 +83,7 @@ _char32_struct = struct.Struct("32s")
 _char64_struct = struct.Struct("64s")
 _char128_struct = struct.Struct("128s")
 _char256_struct = struct.Struct("256s")
+_decimal12_struct = struct.Struct("12s")
 _double_struct = struct.Struct("=d")
 _float_struct = struct.Struct("=f")
 _int8_struct = struct.Struct("=b")
@@ -291,6 +292,14 @@ def _decode_datetime(value):
                              (value >> 39) & 0b11111, (value >> 33) & 0b111111, (value >> 27) & 0b111111, ((value >> 17) & 0b1111111111) * 1000)
 
 
+def _decode_decimal8(value, scale):
+    return decimal.Decimal(value).scaleb(-scale)
+
+
+def _decode_decimal12(value, scale):
+    return decimal.Decimal(int.from_bytes(value, byteorder='little', signed=True)).scaleb(-scale)
+
+
 def _decode_time(value):
     return datetime.time(value >> 26, (value >> 20) & 0b111111, (value >> 14) & 0b111111, ((value >> 4) & 0b1111111111) * 1000)
 
@@ -304,47 +313,63 @@ def _encode_datetime(value):
            | (value.hour << 39) | (value.minute << 33) | (value.second << 27) | ((value.microsecond // 1000) << 17)
 
 
+def _encode_decimal8(value, scale):
+    return int(value * 10**scale)
+
+
+def _encode_decimal12(value, scale):
+    return int(value * 10**scale).to_bytes(12, byteorder='little', signed=True)
+
+
 def _encode_time(value):
     return (value.hour << 26) | (value.minute << 20) | (value.second << 14) | ((value.microsecond // 1000) << 4)
 
 
 class ProcData(_SingletonType("_Singleton", (object,), {})):
     class ColumnType(object):
-        ARRAY     = 0x80000000
-        BOOLEAN   = 0x20000000
-        BYTES     = 0x00000002
-        CHAR1     = 0x00080000
-        CHAR2     = 0x00100000
-        CHAR4     = 0x00001000
-        CHAR8     = 0x00002000
-        CHAR16    = 0x00004000
-        CHAR32    = 0x00200000
-        CHAR64    = 0x00400000
-        CHAR128   = 0x00800000
-        CHAR256   = 0x01000000
-        DATE      = 0x02000000
-        DATETIME  = 0x00000200
-        DECIMAL   = 0x08000000
-        DOUBLE    = 0x00000010
-        FLOAT     = 0x00000020
-        INT       = 0x00000040
-        INT8      = 0x00020000
-        INT16     = 0x00040000
-        IPV4      = 0x00008000
-        JSON      = 0x00000100
-        LONG      = 0x00000080
-        STRING    = 0x00000001
-        TIME      = 0x04000000
-        TIMESTAMP = 0x00010000
-        ULONG     = 0x00000800
-        UUID      = 0x00000008
-        VECTOR    = 0x40000000
+        ARRAY     = 0x080000000
+        BOOLEAN   = 0x020000000
+        BYTES     = 0x000000002
+        CHAR1     = 0x000080000
+        CHAR2     = 0x000100000
+        CHAR4     = 0x000001000
+        CHAR8     = 0x000002000
+        CHAR16    = 0x000004000
+        CHAR32    = 0x000200000
+        CHAR64    = 0x000400000
+        CHAR128   = 0x000800000
+        CHAR256   = 0x001000000
+        DATE      = 0x002000000
+        DATETIME  = 0x000000200
+        DECIMAL8  = 0x008000000
+        DECIMAL12 = 0x100000000
+        DOUBLE    = 0x000000010
+        FLOAT     = 0x000000020
+        INT       = 0x000000040
+        INT8      = 0x000020000
+        INT16     = 0x000040000
+        IPV4      = 0x000008000
+        JSON      = 0x000000100
+        LONG      = 0x000000080
+        STRING    = 0x000000001
+        TIME      = 0x004000000
+        TIMESTAMP = 0x000010000
+        ULONG     = 0x000000800
+        UUID      = 0x000000008
+        VECTOR    = 0x040000000
 
 
     class Column(Sequence):
         def __init__(self, file, writable):
             self._name = file.read_string()
             self._type = file.read_uint64()
+
+            if self._type in [ProcData.ColumnType.DECIMAL8, ProcData.ColumnType.DECIMAL12]:
+                self._precision = file.read_uint64()
+                self._scale = file.read_uint64()
+            else:
+                self._precision = None
+                self._scale = None
 
             self._type_size = {
                 ProcData.ColumnType.ARRAY:       8,
@@ -361,7 +386,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                 ProcData.ColumnType.CHAR256:   256,
                 ProcData.ColumnType.DATE:        4,
                 ProcData.ColumnType.DATETIME:    8,
-                ProcData.ColumnType.DECIMAL:     8,
+                ProcData.ColumnType.DECIMAL8:    8,
+                ProcData.ColumnType.DECIMAL12:  12,
                 ProcData.ColumnType.DOUBLE:      8,
                 ProcData.ColumnType.FLOAT:       4,
                 ProcData.ColumnType.INT:         4,
@@ -437,7 +463,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.CHAR256: lambda data, index: _decode_char(_char256_struct.unpack_from(data, index * 256)[0]),
                     ProcData.ColumnType.DATE: lambda data, index: _decode_date(_int32_struct.unpack_from(data, index * 4)[0]),
                     ProcData.ColumnType.DATETIME: lambda data, index: _decode_datetime(_int64_struct.unpack_from(data, index * 8)[0]),
-                    ProcData.ColumnType.DECIMAL: lambda data, index: decimal.Decimal(_int64_struct.unpack_from(data, index * 8)[0]).scaleb(-4),
+                    ProcData.ColumnType.DECIMAL8: lambda data, index: _decode_decimal8(_int64_struct.unpack_from(data, index * 8)[0], self._scale),
+                    ProcData.ColumnType.DECIMAL12: lambda data, index: _decode_decimal12(_decimal12_struct.unpack_from(data, index * 12)[0], self._scale),
                     ProcData.ColumnType.DOUBLE: lambda data, index: _double_struct.unpack_from(data, index * 8)[0],
                     ProcData.ColumnType.FLOAT: lambda data, index: _float_struct.unpack_from(data, index * 4)[0],
                     ProcData.ColumnType.INT: lambda data, index: _int32_struct.unpack_from(data, index * 4)[0],
@@ -464,7 +491,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.CHAR256: lambda data, index, count: [_decode_char(value) for value in struct.unpack_from("256s" * count, data, index * 256)],
                     ProcData.ColumnType.DATE: lambda data, index, count: [_decode_date(value) for value in struct.unpack_from("=" + str(count) + "i", data, index * 4)],
                     ProcData.ColumnType.DATETIME: lambda data, index, count: [_decode_datetime(value) for value in struct.unpack_from("=" + str(count) + "q", data, index * 8)],
-                    ProcData.ColumnType.DECIMAL: lambda data, index, count: [decimal.Decimal(value).scaleb(-4) for value in struct.unpack_from("=" + str(count) + "q", data, index * 8)],
+                    ProcData.ColumnType.DECIMAL8: lambda data, index, count: [_decode_decimal8(value, self._scale) for value in struct.unpack_from("=" + str(count) + "q", data, index * 8)],
+                    ProcData.ColumnType.DECIMAL12: lambda data, index, count: [_decode_decimal12(value, self._scale) for value in struct.unpack_from("12s" * count, data, index * 12)],
                     ProcData.ColumnType.DOUBLE: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "d", data, index * 8)),
                     ProcData.ColumnType.FLOAT: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "f", data, index * 4)),
                     ProcData.ColumnType.INT: lambda data, index, count: list(struct.unpack_from("=" + str(count) + "i", data, index * 4)),
@@ -485,6 +513,14 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         @property
         def type(self):
             return self._type
+
+        @property
+        def precision(self):
+            return self._precision
+
+        @property
+        def scale(self):
+            return self._scale
 
         @property
         def is_nullable(self):
@@ -589,7 +625,8 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
                     ProcData.ColumnType.CHAR256: lambda data, index, value: _char256_struct.pack_into(data, index * 256, _encode_char(value, 256)),
                     ProcData.ColumnType.DATE: lambda data, index, value: _int32_struct.pack_into(data, index * 4, _encode_date(value)),
                     ProcData.ColumnType.DATETIME: lambda data, index, value: _int64_struct.pack_into(data, index * 8, _encode_datetime(value)),
-                    ProcData.ColumnType.DECIMAL: lambda data, index, value: _int64_struct.pack_into(data, index * 8, long(value * 10000)),
+                    ProcData.ColumnType.DECIMAL8: lambda data, index, value: _int64_struct.pack_into(data, index * 8, _encode_decimal8(value, self._scale)),
+                    ProcData.ColumnType.DECIMAL12: lambda data, index, value: _decimal12_struct.pack_into(data, index * 12, _encode_decimal12(value, self._scale)),
                     ProcData.ColumnType.DOUBLE: lambda data, index, value: _double_struct.pack_into(data, index * 8, value),
                     ProcData.ColumnType.FLOAT: lambda data, index, value: _float_struct.pack_into(data, index * 4, value),
                     ProcData.ColumnType.INT: lambda data, index, value: _int32_struct.pack_into(data, index * 4, int(value)),
@@ -992,7 +1029,7 @@ class ProcData(_SingletonType("_Singleton", (object,), {})):
         """
         self.from_gdf( gdf, output_table )
 
-    
+
     def to_gdf(self):
         """Access proc data as pygdf data frame (GPU - data frame). If the UDF input data is a single table then
             a pygdf data frame is returned. If it is multiple tables then a Pandas Series where the elements are
